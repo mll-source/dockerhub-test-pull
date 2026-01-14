@@ -1,1 +1,1 @@
-datagear/datagear:latest
+kafka
