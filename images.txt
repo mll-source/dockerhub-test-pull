@@ -1,1 +1,2 @@
 apache/doris:fe-2.1.5
+--platform linux nginx
