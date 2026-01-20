@@ -1,2 +1,3 @@
 --platform linux nginx
 --platform linux nginx
+--platform linux nginx
