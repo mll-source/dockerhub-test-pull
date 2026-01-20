@@ -25,7 +25,8 @@ jobs:
 
       - name: Build and push image Aliyun
         run: |
-          docker login -u "$ALIYUN_REGISTRY_USER" -p "$ALIYUN_REGISTRY_PASSWORD" "$ALIYUN_REGISTRY"
+          echo "$ALIYUN_REGISTRY_PASSWORD" | docker login -u "$ALIYUN_REGISTRY_USER" --password-stdin "$ALIYUN_REGISTRY"
+          
           # 数据预处理,判断镜像是否重名
           declare -A duplicate_images
           declare -A temp_map
@@ -72,41 +73,88 @@ jobs:
             if echo "$line" | grep -q '^\s*#'; then
               continue
             fi
-        
-            echo "docker pull $line"
-            docker pull "$line"
-            platform=$(echo "$line" | awk -F'--platform[ =]' '{if (NF>1) print $2}' | awk '{print $1}')
-            echo "platform is $platform"
-            # 如果存在架构信息 将架构信息拼到镜像名称前面
-            if [ -z "$platform" ]; then
-              platform_prefix=""
+
+            # 使用 set -- 来解析命令行参数
+            set -- $line  # 注意：这里故意不加引号，让 shell 拆分单词
+
+            platform=""
+            image=""
+
+            # 解析参数
+            while [[ $# -gt 0 ]]; do
+              case "$1" in
+                --platform=*)
+                  platform="${1#--platform=}"
+                  shift
+                  ;;
+                --platform)
+                  # 支持 --platform linux/amd64 形式（虽然 docker 不这么用，但健壮点）
+                  if [[ -n "$2" && "$2" != --* ]]; then
+                    platform="$2"
+                    shift 2
+                  else
+                    echo "Error: --platform requires a value"
+                    exit 1
+                  fi
+                  ;;
+                *)
+                  # 第一个非选项参数就是镜像名
+                  if [[ -z "$image" ]]; then
+                    image="$1"
+                  else
+                    echo "Warning: extra argument ignored: $1"
+                  fi
+                  shift
+                  ;;
+              esac
+            done
+
+            if [[ -z "$image" ]]; then
+              echo "Error: no image specified in line: $line"
+              continue
+            fi
+
+            echo "Pulling image: $image with platform: ${platform:-default}"
+
+            # 执行 pull（如果指定了 platform）
+            if [[ -n "$platform" ]]; then
+              docker pull --platform "$platform" "$image"
             else
+              docker pull "$image"
+            fi
+
+            # 后续处理：生成 new_image 名称等（和你原来逻辑一致）
+            # 注意：这里 image 是纯镜像名，如 nginx:latest
+
+            # 获取 镜像名:tag
+            image_name_tag=$(echo "$image" | awk -F'/' '{print $NF}')
+            image_name_tag="${image_name_tag%%@*}"  # 去掉 @sha256...
+
+            # 获取命名空间（用于去重）
+            name_space=$(echo "$image" | awk -F'/' '
+              {
+                if (NF == 3) print $2;
+                else if (NF == 2) print $1;
+                else print ""
+              }
+            ')
+            image_name=$(echo "$image_name_tag" | awk -F':' '{print $1}')
+
+            # 构建前缀（和你原来逻辑一致）
+            platform_prefix=""
+            if [[ -n "$platform" ]]; then
               platform_prefix="${platform//\//_}_"
             fi
-            echo "platform_prefix is $platform_prefix"
-            # 获取镜像的完整名称，例如kasmweb/nginx:1.25.3（命名空间/镜像名:版本号）
-            image=$(echo "$line" | awk '{print $NF}')
 
-            # 获取 镜像名:版本号 例如nginx:1.25.3
-            image_name_tag=$(echo "$image" | awk -F'/' '{print $NF}')
-            # 获取命名空间 例如kasmweb 这里有种特殊情况 docker.io/nginx，把docker.io当成命名空间，也OK
-            name_space=$(echo "$image" | awk -F'/' '{if (NF==3) print $2; else if (NF==2) print $1; else print ""}')
-            # 获取镜像名例如nginx
-            image_name=$(echo "$image_name_tag" | awk -F':' '{print $1}')
-        
             name_space_prefix=""
-            # 如果镜像名重名
-            if [[ -n "${duplicate_images[$image_name]}" ]]; then
-               #如果命名空间非空，将命名空间加到前缀
-               if [[ -n "${name_space}" ]]; then
-                  name_space_prefix="${name_space}_"
-               fi
+            if [[ -n "${duplicate_images[$image_name]}" ]] && [[ -n "$name_space" ]]; then
+              name_space_prefix="${name_space}_"
             fi
-            
-            # 将@sha256:等字符删除
-            image_name_tag="${image_name_tag%%@*}"
+
             new_image="$ALIYUN_REGISTRY/$ALIYUN_NAME_SPACE/${platform_prefix}${name_space_prefix}${image_name_tag}"
+            echo "Tagging $image -> $new_image"
             docker tag "$image" "$new_image"
-            echo "docker push $new_image"
+            echo "Pushing $new_image"
             docker push "$new_image"
+
           done < images.txt
