@@ -2,3 +2,4 @@
 --platform=arm nginx
 --platform=linux/arm64 nginx
 --platform=linux/arm64 nginx
+--platform=linux/amd64 nginx
