@@ -9,3 +9,4 @@
 --platform=linux/amd64 nginxt
 --platform=linux/amd64 fdsfasfaf
 --platform=linux/amd64 fdsfasfaf
+--platform=linux/amd64 nginxt
