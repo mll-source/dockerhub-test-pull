@@ -4,3 +4,4 @@
 --platform=linux/arm64 nginx
 --platform=linux/amd64 nginx
 --platform=linux/amd64 nginx:1.27.0
+--platform=linux/amd64 nginx:1.27.0
