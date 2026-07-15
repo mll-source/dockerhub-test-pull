@@ -1,1 +1,1 @@
-marketplace.azurecr.io/bitnami/kube-state-metrics:2.2.1-debian-10-r1
+nvidia/cuda:12.3.0-base-ubuntu22.04
